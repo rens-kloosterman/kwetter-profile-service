@@ -1,28 +1,47 @@
 package com.fhict.profileservice.controllers;
 
-import com.fhict.profileservice.models.Message;
-import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import com.fhict.profileservice.models.DTO.ProfileWithFollowing;
+import com.fhict.profileservice.models.Profile;
+import com.fhict.profileservice.services.ProfileService;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
-@RequestMapping(path = "api", produces = MediaType.APPLICATION_JSON_VALUE)
-@CrossOrigin(origins = "*")
+@RequestMapping("/profile")
 public class ProfileController {
-    @GetMapping(value = "/public")
-    public Message publicEndpoint() {
-        return new Message("All good. You DO NOT need to be authenticated to call /api/public.");
+    private final ProfileService profileService;
+    private final RabbitTemplate rabbitTemplate;
+
+    public ProfileController(ProfileService profileService, RabbitTemplate rabbitTemplate) {
+        this.profileService = profileService;
+        this.rabbitTemplate = rabbitTemplate;
     }
 
-    @GetMapping(value = "/private")
-    public Message privateEndpoint() {
-        return new Message("All good. You can see this because you are Authenticated.");
+    @GetMapping("/getall")
+    public List<Profile> getAllProfiles() {
+        return this.profileService.getAll();
     }
 
-    @GetMapping(value = "/private-scoped")
-    public Message privateScopedEndpoint() {
-        return new Message("All good. You can see this because you are Authenticated with a Token granted the 'read:messages' scope");
+    @GetMapping("/{username}")
+    public ResponseEntity<ProfileWithFollowing> getProfileByUsername(@PathVariable String username) {
+        Profile profile = profileService.getProfileByUsername(username);
+        List<String> followingUserIds = (List<String>) rabbitTemplate.convertSendAndReceive("kwetter", "following", profile.getUserId());
+        ProfileWithFollowing profileWithFollowing = new ProfileWithFollowing(profile, followingUserIds);
+        return new ResponseEntity<>(profileWithFollowing, HttpStatus.OK);
+    }
+
+    @PostMapping("/createprofile")
+    public ResponseEntity<Profile> createProfile(@RequestBody Profile profile) {
+        System.out.println("createprofile controller");
+        return profileService.createProfile(profile);
+    }
+
+    @PutMapping("/updateprofile")
+    public ResponseEntity<Void> updateProfile(@RequestBody Profile profile) {
+        return profileService.updateProfile(profile);
     }
 }
